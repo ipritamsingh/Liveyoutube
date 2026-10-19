@@ -37,23 +37,26 @@ interface DashboardViewProps {
   onLogout: () => void;
   onShowMessage: (msg: string) => void;
   onClearLogs: () => void;
+  uploadVideoFile: (file: File) => Promise<{ success: boolean; serverFilePath?: string; message?: string }>;
+  isUploading?: boolean;
+  uploadProgress?: number | null;
 }
 
 const SAMPLE_VIDEOS = [
   {
-    name: 'sampleNature',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-    title: '🌊 Nature HD',
+    name: 'sampleLocalHD',
+    url: '/public/sample_broadcast.mp4',
+    title: '🎬 720p HD Broadcast (Built-in)',
   },
   {
-    name: 'sampleCity',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
-    title: '🌆 City Showcase',
+    name: 'sampleStreet',
+    url: 'https://raw.githubusercontent.com/intel-iot-devkit/sample-videos/master/person-bicycle-car-detection.mp4',
+    title: '🚗 Street Live HD',
   },
   {
-    name: 'sampleCountdown',
-    url: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
-    title: '⏱️ Animation Live',
+    name: 'sampleAnimation',
+    url: 'https://upload.wikimedia.org/wikipedia/commons/transcoded/f/f1/Sintel_movie_4K.webm/Sintel_movie_4K.webm.480p.vp9.webm',
+    title: '🐉 Dragon Animation',
   },
 ];
 
@@ -67,6 +70,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onLogout,
   onShowMessage,
   onClearLogs,
+  uploadVideoFile,
+  isUploading,
+  uploadProgress,
 }) => {
   const t = getTranslation(lang);
 
@@ -75,6 +81,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   const [videoUrl, setVideoUrl] = useState('');
   const [videoBlobUrl, setVideoBlobUrl] = useState<string>('');
   const [videoFileName, setVideoFileName] = useState<string>('');
+  const [uploadedServerPath, setUploadedServerPath] = useState<string>('');
   const [rtmpChoice, setRtmpChoice] = useState<RTMPPlatform>('yt');
   const [customRtmpUrl, setCustomRtmpUrl] = useState('');
   const [streamKey, setStreamKey] = useState('live_92837482_demoKeyPass');
@@ -162,7 +169,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   }, [status.isStreaming, status.isPaused]);
 
   // Handle local video file upload
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const blobUrl = URL.createObjectURL(file);
@@ -171,15 +178,31 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       setVideoFilePath(file.name);
       onShowMessage(
         lang === 'en'
-          ? `Selected video: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`
-          : `Đã chọn video: ${file.name} (${(file.size / (1024 * 1024)).toFixed(1)} MB)`
+          ? `Uploading ${file.name} to server for livestreaming...`
+          : `Đang tải ${file.name} lên máy chủ...`
       );
+      const res = await uploadVideoFile(file);
+      if (res.success && res.serverFilePath) {
+        setUploadedServerPath(res.serverFilePath);
+        onShowMessage(
+          lang === 'en'
+            ? `✓ Video uploaded to server! Ready to broadcast.`
+            : `✓ Đã tải video lên máy chủ! Sẵn sàng phát sóng.`
+        );
+      } else {
+        onShowMessage(
+          lang === 'en'
+            ? `Upload failed: ${res.message || 'Unknown error'}`
+            : `Tải lên thất bại: ${res.message || 'Lỗi không xác định'}`
+        );
+      }
     }
   };
 
   const handleSelectSample = (sample: typeof SAMPLE_VIDEOS[0]) => {
     if (videoSource === 'file') {
-      setVideoFilePath(sample.title);
+      setVideoFilePath(sample.url);
+      setUploadedServerPath(sample.url);
       setVideoBlobUrl(sample.url);
       setVideoFileName(sample.title);
     } else {
@@ -211,6 +234,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       videoUrl,
       videoBlobUrl,
       videoFileName,
+      uploadedServerPath,
       rtmpChoice,
       customRtmpUrl,
       streamKey,
@@ -371,6 +395,39 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Stream Diagnostic Error Banner */}
+      {status.error && (
+        <div
+          style={{
+            backgroundColor: '#fef2f2',
+            border: '2px solid #ef4444',
+            color: '#991b1b',
+            padding: '12px 16px',
+            borderRadius: '10px',
+            marginBottom: '18px',
+            fontSize: '13px',
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '15px' }}>
+            <span>⚠️ Live Broadcast Diagnostic Error:</span>
+          </div>
+          <div style={{ marginTop: '4px', fontFamily: 'monospace', wordBreak: 'break-all', backgroundColor: '#fee2e2', padding: '6px 10px', borderRadius: '6px' }}>
+            {status.error}
+          </div>
+          <div style={{ marginTop: '6px', fontSize: '12px', color: '#7f1d1d' }}>
+            💡 <strong>Troubleshooting Guide:</strong>{' '}
+            {status.error.includes('No such file')
+              ? 'The video file does not exist on the server. Please click "Browse Video File" to upload your file to the server first, or test with a sample video below.'
+              : status.error.includes('timed out') || status.error.includes('1935')
+              ? 'Raw RTMP port 1935 is blocked in this cloud environment. Switch RTMP destination to "YouTube Live (RTMPS Port 443 - Recommended)".'
+              : status.error.includes('Input/output') || status.error.includes('pull function') || status.error.includes('Server error')
+              ? 'YouTube rejected the stream key or RTMP connection. Please check that your YouTube Stream Key is active and correct in YouTube Studio.'
+              : 'Check the Terminal Console Logs below for detailed FFmpeg diagnostic output.'}
+          </div>
+        </div>
+      )}
 
       <h1>{t.appTitle}</h1>
 
@@ -723,9 +780,10 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                   />
                   <button
                     type="button"
+                    disabled={isUploading}
                     onClick={() => fileInputRef.current?.click()}
                     style={{
-                      backgroundColor: '#4f46e5',
+                      backgroundColor: isUploading ? '#9ca3af' : '#4f46e5',
                       color: '#fff',
                       border: 'none',
                       borderRadius: '8px',
@@ -733,18 +791,45 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                       fontSize: '14px',
                       fontWeight: '600',
                       whiteSpace: 'nowrap',
-                      cursor: 'pointer',
+                      cursor: isUploading ? 'not-allowed' : 'pointer',
                       display: 'flex',
                       alignItems: 'center',
                       gap: '6px',
                     }}
                   >
-                    <Upload size={16} /> {t.chooseFileBtn}
+                    <Upload size={16} /> {isUploading ? 'Uploading...' : t.chooseFileBtn}
                   </button>
                 </div>
-                {videoFileName && (
-                  <span style={{ fontSize: '12px', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <CheckCircle size={14} /> Ready to stream: {videoFileName}
+
+                {/* Uploading progress indicator */}
+                {isUploading && (
+                  <div style={{ marginTop: '4px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4f46e5', marginBottom: '2px' }}>
+                      <span>Uploading video file to server...</span>
+                      <span>{uploadProgress ?? 50}%</span>
+                    </div>
+                    <div style={{ width: '100%', height: '6px', backgroundColor: '#e0e7ff', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div
+                        style={{
+                          height: '100%',
+                          width: `${uploadProgress ?? 50}%`,
+                          backgroundColor: '#4f46e5',
+                          transition: 'width 0.2s ease',
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Uploaded state indicator */}
+                {uploadedServerPath && (
+                  <span style={{ fontSize: '12px', color: '#059669', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px', fontWeight: 'bold' }}>
+                    <CheckCircle size={14} /> Server Ready: {videoFileName || videoFilePath} (File uploaded to server)
+                  </span>
+                )}
+                {!uploadedServerPath && !videoFilePath.startsWith('http') && videoFilePath && (
+                  <span style={{ fontSize: '12px', color: '#d97706', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                    ⚠️ Click "Browse Video File" to upload {videoFilePath} to the server.
                   </span>
                 )}
               </div>
@@ -802,8 +887,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               value={rtmpChoice}
               onChange={(e) => setRtmpChoice(e.target.value as RTMPPlatform)}
             >
-              <option value="yt">{t.rtmpYouTube}</option>
-              <option value="fb">{t.rtmpFacebook}</option>
+              <option value="yt">YouTube Live (RTMPS SSL Port 443 - Recommended)</option>
+              <option value="yt_rtmp">YouTube Live (RTMP Port 1935)</option>
+              <option value="fb">Facebook Live (RTMPS Port 443)</option>
               <option value="tiktok">{t.rtmpTikTok}</option>
               <option value="twitch">{t.rtmpTwitch}</option>
               <option value="kick">{t.rtmpKick}</option>

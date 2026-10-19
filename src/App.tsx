@@ -20,8 +20,18 @@ export function App() {
   const [dialogMessage, setDialogMessage] = useState<string | null>(null);
 
   const t = getTranslation(lang);
-  const { status, startStream, pauseStream, stopStream, clearMessage, clearLogs, isServerActive } =
-    useStreamSimulator();
+  const {
+    status,
+    startStream,
+    pauseStream,
+    stopStream,
+    clearMessage,
+    clearLogs,
+    isServerActive,
+    uploadVideoFile,
+    isUploading,
+    uploadProgress,
+  } = useStreamSimulator();
 
   useEffect(() => {
     // Check initial authentication state
@@ -146,6 +156,9 @@ export function App() {
           onLogout={handleLogout}
           onShowMessage={handleShowMessage}
           onClearLogs={clearLogs}
+          uploadVideoFile={uploadVideoFile}
+          isUploading={isUploading}
+          uploadProgress={uploadProgress}
         />
       )}
 

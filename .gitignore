@@ -1,0 +1,6 @@
+node_modules/
+dist/
+.aistudio/
+bun.lock
+tsconfig.tsbuildinfo
+.DS_Store
